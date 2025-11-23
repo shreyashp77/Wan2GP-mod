@@ -9,7 +9,20 @@
         "preload_URLs": "qwen_image_edit_20B",
         "attention": {
             "<89": "sdpa"
-        }
+        },
+        "guide_custom_choices": {
+            "choices": [
+                ["No Reference Images", ""],
+                ["Use Reference Images", "KI"]
+            ],
+            "default": "KI",
+            "label": "Reference Images",
+            "letters_filter": "KI",
+            "visible": true,
+            "show_label": true,
+            "scale": 2
+        },
+        "image_outputs": true
     },
     "prompt": "add a hat",
     "resolution": "1024x1024",

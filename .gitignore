@@ -1,8 +1,8 @@
 .*
 *.py[cod]
-# *.jpg
+*.jpg
 *.jpeg
-# *.png
+*.png
 *.gif
 *.bmp
 *.mp4
@@ -14,7 +14,7 @@
 *.pth
 *.ckpt
 *.safetensors
-#*.json
+
 # *.txt
 *.backup
 *.pkl
@@ -22,6 +22,7 @@
 *.pdf
 *.whl
 *.exe
+*.bat
 cache
 __pycache__/
 storage/
@@ -45,3 +46,5 @@ loras_i2v/
 settings/
 
 wgp_config.json
+saved_prompts.json
+input/

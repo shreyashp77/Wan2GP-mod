@@ -8105,6 +8105,44 @@ def download_lora(state, lora_url, progress=gr.Progress(track_tqdm=True),):
 def set_gallery_tab(state, evt:gr.SelectData):                
     return evt.index, "video" if evt.index == 0 else "audio"
 
+SAVED_PROMPTS_FILE = "saved_prompts.json"
+
+def get_saved_prompts():
+    if not os.path.exists(SAVED_PROMPTS_FILE):
+        return {}
+    try:
+        with open(SAVED_PROMPTS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_prompt_handler(name, prompt_text):
+    if name is None: name = ""
+    if prompt_text is None: prompt_text = ""
+    if not name or not prompt_text:
+        return gr.update()
+    prompts = get_saved_prompts()
+    prompts[name] = prompt_text
+    with open(SAVED_PROMPTS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(prompts, f, indent=4)
+    return gr.update(choices=list(prompts.keys()), value=name)
+
+def load_prompt_handler(name):
+    if name is None:
+        return gr.update()
+    prompts = get_saved_prompts()
+    return prompts.get(name, "")
+
+def delete_prompt_handler(name):
+    if name is None:
+        return gr.update()
+    prompts = get_saved_prompts()
+    if name in prompts:
+        del prompts[name]
+        with open(SAVED_PROMPTS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(prompts, f, indent=4)
+    return gr.update(choices=list(prompts.keys()), value=None)
+
 def generate_video_tab(update_form = False, state_dict = None, ui_defaults = None, model_family = None, model_base_type_choice = None, model_choice = None, header = None, main = None, main_tabs= None, tab_id='generate', edit_tab=None, default_state=None):
     global inputs_names #, advanced
     plugin_data = gr.State({})
@@ -8311,143 +8349,144 @@ def generate_video_tab(update_form = False, state_dict = None, ui_defaults = Non
             with gr.Column(visible= guide_preprocessing is not None or mask_preprocessing is not None or guide_custom_choices is not None or image_ref_choices is not None) as video_prompt_column: 
                 video_prompt_type_value= ui_defaults.get("video_prompt_type","")
                 video_prompt_type = gr.Text(value= video_prompt_type_value, visible= False)
-                with gr.Row(visible = image_mode_value!=2) as guide_selection_row:
-                    # Control Video Preprocessing
-                    if guide_preprocessing is None:
-                        video_prompt_type_video_guide = gr.Dropdown(choices=[("","")], value="", label="Control Video", scale = 2, visible= False, show_label= True, )
-                    else:
-                        pose_label = "Pose" if image_outputs else "Motion" 
-                        guide_preprocessing_labels_all = {
-                            "": "No Control Video",
-                            "UV": "Keep Control Video Unchanged",
-                            "PV": f"Transfer Human {pose_label}",
-                            "DV": "Transfer Depth",
-                            "EV": "Transfer Canny Edges",
-                            "SV": "Transfer Shapes",
-                            "LV": "Transfer Flow",
-                            "CV": "Recolorize",
-                            "MV": "Perform Inpainting",
-                            "V": "Use Vace raw format",
-                            "PDV": f"Transfer Human {pose_label} & Depth",
-                            "PSV": f"Transfer Human {pose_label} & Shapes",
-                            "PLV": f"Transfer Human {pose_label} & Flow" ,
-                            "DSV": "Transfer Depth & Shapes",
-                            "DLV": "Transfer Depth & Flow",
-                            "SLV": "Transfer Shapes & Flow",
-                        }
-                        guide_preprocessing_choices = []
-                        guide_preprocessing_labels = guide_preprocessing.get("labels", {}) 
-                        for process_type in guide_preprocessing["selection"]:
-                            process_label = guide_preprocessing_labels.get(process_type, None)
-                            process_label = guide_preprocessing_labels_all.get(process_type,process_type) if process_label is None else process_label
-                            if image_outputs: process_label = process_label.replace("Video", "Image")
-                            guide_preprocessing_choices.append( (process_label, process_type) )
+                with gr.Accordion("Control Settings", open=False, visible = image_mode_value!=2):
+                    with gr.Row() as guide_selection_row:
+                        # Control Video Preprocessing
+                        if guide_preprocessing is None:
+                            video_prompt_type_video_guide = gr.Dropdown(choices=[("","")], value="", label="Control Video", scale = 2, visible= False, show_label= True, )
+                        else:
+                            pose_label = "Pose" if image_outputs else "Motion" 
+                            guide_preprocessing_labels_all = {
+                                "": "No Control Video",
+                                "UV": "Keep Control Video Unchanged",
+                                "PV": f"Transfer Human {pose_label}",
+                                "DV": "Transfer Depth",
+                                "EV": "Transfer Canny Edges",
+                                "SV": "Transfer Shapes",
+                                "LV": "Transfer Flow",
+                                "CV": "Recolorize",
+                                "MV": "Perform Inpainting",
+                                "V": "Use Vace raw format",
+                                "PDV": f"Transfer Human {pose_label} & Depth",
+                                "PSV": f"Transfer Human {pose_label} & Shapes",
+                                "PLV": f"Transfer Human {pose_label} & Flow" ,
+                                "DSV": "Transfer Depth & Shapes",
+                                "DLV": "Transfer Depth & Flow",
+                                "SLV": "Transfer Shapes & Flow",
+                            }
+                            guide_preprocessing_choices = []
+                            guide_preprocessing_labels = guide_preprocessing.get("labels", {}) 
+                            for process_type in guide_preprocessing["selection"]:
+                                process_label = guide_preprocessing_labels.get(process_type, None)
+                                process_label = guide_preprocessing_labels_all.get(process_type,process_type) if process_label is None else process_label
+                                if image_outputs: process_label = process_label.replace("Video", "Image")
+                                guide_preprocessing_choices.append( (process_label, process_type) )
 
-                        video_prompt_type_video_guide_label = guide_preprocessing.get("label", "Control Video Process")
-                        if image_outputs: video_prompt_type_video_guide_label = video_prompt_type_video_guide_label.replace("Video", "Image")
-                        video_prompt_type_video_guide = gr.Dropdown(
-                            guide_preprocessing_choices,
-                            value=filter_letters(video_prompt_type_value,  all_guide_processes, guide_preprocessing.get("default", "") ),
-                            label= video_prompt_type_video_guide_label , scale = 1, visible= guide_preprocessing.get("visible", True) , show_label= True,
-                        )
-                        any_control_video = True
-                        any_control_image = image_outputs 
+                            video_prompt_type_video_guide_label = guide_preprocessing.get("label", "Control Video Process")
+                            if image_outputs: video_prompt_type_video_guide_label = video_prompt_type_video_guide_label.replace("Video", "Image")
+                            video_prompt_type_video_guide = gr.Dropdown(
+                                guide_preprocessing_choices,
+                                value=filter_letters(video_prompt_type_value,  all_guide_processes, guide_preprocessing.get("default", "") ),
+                                label= video_prompt_type_video_guide_label , scale = 1, visible= guide_preprocessing.get("visible", True) , show_label= True,
+                            )
+                            any_control_video = True
+                            any_control_image = image_outputs 
 
-                    # Alternate Control Video Preprocessing / Options
-                    if guide_custom_choices is None:
-                        video_prompt_type_video_guide_alt = gr.Dropdown(choices=[("","")], value="", label="Control Video", visible= False, scale = 1 )
-                    else:
-                        video_prompt_type_video_guide_alt_label = guide_custom_choices.get("label", "Control Video Process")
-                        if image_outputs: video_prompt_type_video_guide_alt_label = video_prompt_type_video_guide_alt_label.replace("Video", "Image")
-                        video_prompt_type_video_guide_alt_choices = [(label.replace("Video", "Image") if image_outputs else label, value) for label,value in guide_custom_choices["choices"] ]
-                        guide_custom_choices_value = get_default_value(video_prompt_type_video_guide_alt_choices, filter_letters(video_prompt_type_value, guide_custom_choices["letters_filter"]), guide_custom_choices.get("default", "") )
-                        video_prompt_type_video_guide_alt = gr.Dropdown(
-                            choices= video_prompt_type_video_guide_alt_choices,
-                            # value=filter_letters(video_prompt_type_value, guide_custom_choices["letters_filter"], guide_custom_choices.get("default", "") ),
-                            value=guide_custom_choices_value,
-                            visible = guide_custom_choices.get("visible", True),
-                            label= video_prompt_type_video_guide_alt_label, show_label= guide_custom_choices.get("show_label", True), scale = guide_custom_choices.get("scale", 1),
-                        )
-                        any_control_video = True
-                        any_control_image = image_outputs 
-                        any_reference_image = any("I" in choice for label, choice in guide_custom_choices["choices"])
+                        # Alternate Control Video Preprocessing / Options
+                        if guide_custom_choices is None:
+                            video_prompt_type_video_guide_alt = gr.Dropdown(choices=[("","")], value="", label="Control Video", visible= False, scale = 1 )
+                        else:
+                            video_prompt_type_video_guide_alt_label = guide_custom_choices.get("label", "Control Video Process")
+                            if image_outputs: video_prompt_type_video_guide_alt_label = video_prompt_type_video_guide_alt_label.replace("Video", "Image")
+                            video_prompt_type_video_guide_alt_choices = [(label.replace("Video", "Image") if image_outputs else label, value) for label,value in guide_custom_choices["choices"] ]
+                            guide_custom_choices_value = get_default_value(video_prompt_type_video_guide_alt_choices, filter_letters(video_prompt_type_value, guide_custom_choices["letters_filter"]), guide_custom_choices.get("default", "") )
+                            video_prompt_type_video_guide_alt = gr.Dropdown(
+                                choices= video_prompt_type_video_guide_alt_choices,
+                                # value=filter_letters(video_prompt_type_value, guide_custom_choices["letters_filter"], guide_custom_choices.get("default", "") ),
+                                value=guide_custom_choices_value,
+                                visible = guide_custom_choices.get("visible", True),
+                                label= video_prompt_type_video_guide_alt_label, show_label= guide_custom_choices.get("show_label", True), scale = guide_custom_choices.get("scale", 1),
+                            )
+                            any_control_video = True
+                            any_control_image = image_outputs 
+                            any_reference_image = any("I" in choice for label, choice in guide_custom_choices["choices"])
 
-                    # Custom dropdown box & checkbox
-                    custom_video_selection = model_def.get("custom_video_selection", None)
-                    custom_checkbox= False 
-                    if custom_video_selection is None:
-                        video_prompt_type_video_custom_dropbox = gr.Dropdown(choices=[("","")], value="", label="Custom Dropdown", scale = 1, visible= False, show_label= True, )
-                        video_prompt_type_video_custom_checkbox = gr.Checkbox(value=False, label="Custom Checkbbox", scale = 1, visible= False, show_label= True, )
+                        # Custom dropdown box & checkbox
+                        custom_video_selection = model_def.get("custom_video_selection", None)
+                        custom_checkbox= False 
+                        if custom_video_selection is None:
+                            video_prompt_type_video_custom_dropbox = gr.Dropdown(choices=[("","")], value="", label="Custom Dropdown", scale = 1, visible= False, show_label= True, )
+                            video_prompt_type_video_custom_checkbox = gr.Checkbox(value=False, label="Custom Checkbbox", scale = 1, visible= False, show_label= True, )
 
-                    else:
-                        custom_video_choices = custom_video_selection["choices"]
-                        custom_video_trigger = custom_video_selection.get("trigger", "")
-                        custom_choices =  len(custom_video_trigger) == 0 or custom_video_trigger in video_prompt_type_value 
-                        custom_checkbox = custom_video_selection.get("type","") == "checkbox"
+                        else:
+                            custom_video_choices = custom_video_selection["choices"]
+                            custom_video_trigger = custom_video_selection.get("trigger", "")
+                            custom_choices =  len(custom_video_trigger) == 0 or custom_video_trigger in video_prompt_type_value 
+                            custom_checkbox = custom_video_selection.get("type","") == "checkbox"
 
-                        video_prompt_type_video_custom_label = custom_video_selection.get("label", "Custom Choices")
-                        video_prompt_type_video_custom_dropbox = gr.Dropdown(
-                            custom_video_choices,
-                            value=filter_letters(video_prompt_type_value, custom_video_selection.get("letters_filter", ""), custom_video_selection.get("default", "")),
-                            scale = custom_video_selection.get("scale", 1),
-                            label= video_prompt_type_video_custom_label , visible= not custom_checkbox and custom_choices, 
-                            show_label= custom_video_selection.get("show_label", True),
-                        )
-                        video_prompt_type_video_custom_checkbox = gr.Checkbox(value= custom_video_choices[1][1] in video_prompt_type_value , label=custom_video_choices[1][0] , scale = custom_video_selection.get("scale", 1), visible=custom_checkbox and custom_choices, show_label= True, elem_classes="cbx_centered" )
+                            video_prompt_type_video_custom_label = custom_video_selection.get("label", "Custom Choices")
+                            video_prompt_type_video_custom_dropbox = gr.Dropdown(
+                                custom_video_choices,
+                                value=filter_letters(video_prompt_type_value, custom_video_selection.get("letters_filter", ""), custom_video_selection.get("default", "")),
+                                scale = custom_video_selection.get("scale", 1),
+                                label= video_prompt_type_video_custom_label , visible= not custom_checkbox and custom_choices, 
+                                show_label= custom_video_selection.get("show_label", True),
+                            )
+                            video_prompt_type_video_custom_checkbox = gr.Checkbox(value= custom_video_choices[1][1] in video_prompt_type_value , label=custom_video_choices[1][0] , scale = custom_video_selection.get("scale", 1), visible=custom_checkbox and custom_choices, show_label= True, elem_classes="cbx_centered" )
 
-                    # Control Mask Preprocessing
-                    if mask_preprocessing is None:
-                        video_prompt_type_video_mask = gr.Dropdown(choices=[("","")], value="", label="Video Mask", scale = 1, visible= False, show_label= True, )
-                        any_image_mask = image_outputs
-                    else:
-                        mask_preprocessing_labels_all = {
-                            "": "Whole Frame",
-                            "A": "Masked Area",
-                            "NA": "Non Masked Area",
-                            "XA": "Masked Area, rest Inpainted",
-                            "XNA": "Non Masked Area, rest Inpainted", 
-                            "YA": "Masked Area, rest Depth",
-                            "YNA": "Non Masked Area, rest Depth",
-                            "WA": "Masked Area, rest Shapes",
-                            "WNA": "Non Masked Area, rest Shapes",
-                            "ZA": "Masked Area, rest Flow",
-                            "ZNA": "Non Masked Area, rest Flow"
-                        }
+                        # Control Mask Preprocessing
+                        if mask_preprocessing is None:
+                            video_prompt_type_video_mask = gr.Dropdown(choices=[("","")], value="", label="Video Mask", scale = 1, visible= False, show_label= True, )
+                            any_image_mask = image_outputs
+                        else:
+                            mask_preprocessing_labels_all = {
+                                "": "Whole Frame",
+                                "A": "Masked Area",
+                                "NA": "Non Masked Area",
+                                "XA": "Masked Area, rest Inpainted",
+                                "XNA": "Non Masked Area, rest Inpainted", 
+                                "YA": "Masked Area, rest Depth",
+                                "YNA": "Non Masked Area, rest Depth",
+                                "WA": "Masked Area, rest Shapes",
+                                "WNA": "Non Masked Area, rest Shapes",
+                                "ZA": "Masked Area, rest Flow",
+                                "ZNA": "Non Masked Area, rest Flow"
+                            }
 
-                        mask_preprocessing_choices = []
-                        mask_preprocessing_labels = mask_preprocessing.get("labels", {}) 
-                        for process_type in mask_preprocessing["selection"]:
-                            process_label = mask_preprocessing_labels.get(process_type, None)
-                            process_label = mask_preprocessing_labels_all.get(process_type, process_type) if process_label is None else process_label
-                            mask_preprocessing_choices.append( (process_label, process_type) )
+                            mask_preprocessing_choices = []
+                            mask_preprocessing_labels = mask_preprocessing.get("labels", {}) 
+                            for process_type in mask_preprocessing["selection"]:
+                                process_label = mask_preprocessing_labels.get(process_type, None)
+                                process_label = mask_preprocessing_labels_all.get(process_type, process_type) if process_label is None else process_label
+                                mask_preprocessing_choices.append( (process_label, process_type) )
 
-                        video_prompt_type_video_mask_label = mask_preprocessing.get("label", "Area Processed")
-                        video_prompt_type_video_mask = gr.Dropdown(
-                            mask_preprocessing_choices,
-                            value=filter_letters(video_prompt_type_value, "XYZWNA", mask_preprocessing.get("default", "")),
-                            label= video_prompt_type_video_mask_label , scale = 1, visible= "V" in video_prompt_type_value and not "U" in video_prompt_type_value and mask_preprocessing.get("visible", True), 
-                            show_label= True,
-                        )
-                        any_control_video = True
-                        any_control_image = image_outputs 
+                            video_prompt_type_video_mask_label = mask_preprocessing.get("label", "Area Processed")
+                            video_prompt_type_video_mask = gr.Dropdown(
+                                mask_preprocessing_choices,
+                                value=filter_letters(video_prompt_type_value, "XYZWNA", mask_preprocessing.get("default", "")),
+                                label= video_prompt_type_video_mask_label , scale = 1, visible= "V" in video_prompt_type_value and not "U" in video_prompt_type_value and mask_preprocessing.get("visible", True), 
+                                show_label= True,
+                            )
+                            any_control_video = True
+                            any_control_image = image_outputs 
 
-                    # Image Refs Selection
-                    if image_ref_choices is None:
-                        video_prompt_type_image_refs = gr.Dropdown(
-                            # choices=[ ("None", ""),("Start", "KI"),("Ref Image", "I")],
-                            choices=[ ("None", ""),],
-                            value=filter_letters(video_prompt_type_value, ""),
-                            visible = False,
-                            label="Start / Reference Images", scale = 1
-                        )
-                    else:
-                        any_reference_image = True
-                        video_prompt_type_image_refs = gr.Dropdown(
-                            choices= image_ref_choices["choices"],
-                            value=filter_letters(video_prompt_type_value, image_ref_choices["letters_filter"]),
-                            visible = image_ref_choices.get("visible", True),
-                            label=image_ref_choices.get("label", "Inject Reference Images"), show_label= True, scale = 1
-                        )
+                        # Image Refs Selection
+                        if image_ref_choices is None:
+                            video_prompt_type_image_refs = gr.Dropdown(
+                                # choices=[ ("None", ""),("Start", "KI"),("Ref Image", "I")],
+                                choices=[ ("None", ""),],
+                                value=filter_letters(video_prompt_type_value, ""),
+                                visible = False,
+                                label="Start / Reference Images", scale = 1
+                            )
+                        else:
+                            any_reference_image = True
+                            video_prompt_type_image_refs = gr.Dropdown(
+                                choices= image_ref_choices["choices"],
+                                value=filter_letters(video_prompt_type_value, image_ref_choices["letters_filter"]),
+                                visible = image_ref_choices.get("visible", True),
+                                label=image_ref_choices.get("label", "Inject Reference Images"), show_label= True, scale = 1
+                            )
 
                 image_guide = gr.Image(label= "Control Image", height = 800, type ="pil", visible= image_mode_value==1 and "V" in video_prompt_type_value and ("U" in video_prompt_type_value or not "A" in video_prompt_type_value ) , value= ui_defaults.get("image_guide", None))
                 video_guide = gr.Video(label= "Control Video", height = gallery_height, visible= (not image_outputs) and "V" in video_prompt_type_value, value= ui_defaults.get("video_guide", None), elem_id="video_input")
@@ -8563,14 +8602,15 @@ def generate_video_tab(update_form = False, state_dict = None, ui_defaults = Non
                 no_background_removal = model_def.get("no_background_removal", False) #or image_ref_choices is None
                 background_removal_label = model_def.get("background_removal_label", "Remove Background behind People / Objects") 
  
-                remove_background_images_ref = gr.Dropdown(
-                    choices=[
-                        ("Keep Backgrounds behind all Reference Images", 0),
-                        (background_removal_label, 1),
-                    ],
-                    value=0 if no_background_removal else ui_defaults.get("remove_background_images_ref",1),
-                    label="Automatic Removal of Background behind People or Objects in Reference Images", scale = 3, visible= "I" in video_prompt_type_value and not no_background_removal
-                )
+                with gr.Accordion("Automatic Removal of Background behind People or Objects in Reference Images", open=False, visible= "I" in video_prompt_type_value and not no_background_removal) as remove_background_accordion:
+                    remove_background_images_ref = gr.Dropdown(
+                        choices=[
+                            ("Keep Backgrounds behind all Reference Images", 0),
+                            (background_removal_label, 1),
+                        ],
+                        value=0 if no_background_removal else ui_defaults.get("remove_background_images_ref",1),
+                        show_label=False, scale = 3
+                    )
 
             any_audio_voices_support = any_audio_track(base_model_type) 
             audio_prompt_type_value = ui_defaults.get("audio_prompt_type", "A" if any_audio_voices_support else "") 
@@ -8616,6 +8656,13 @@ def generate_video_tab(update_form = False, state_dict = None, ui_defaults = Non
                 advanced_prompt  = len(errors) > 0
             with gr.Column(visible= advanced_prompt) as prompt_column_advanced:
                 prompt = gr.Textbox( visible= advanced_prompt, label=prompt_label, value=launch_prompt, lines=3)
+                with gr.Row():
+                    save_prompt_name = gr.Textbox(show_label=False, placeholder="Save Name", scale=2, min_width=120)
+                    save_prompt_btn = gr.Button("Save", scale=1, min_width=60)
+                    saved_prompts_dropdown = gr.Dropdown(show_label=False, choices=list(get_saved_prompts().keys()), scale=3, min_width=160)
+                    load_prompt_btn = gr.Button("Load", scale=1, min_width=60)
+                    delete_prompt_btn = gr.Button("🗑️", scale=0, min_width=40)
+                    clear_prompt_btn = gr.Button("Clear Prompt", scale=1, min_width=80, variant="stop")
 
             with gr.Column(visible=not advanced_prompt and len(variables) > 0) as prompt_column_wizard_vars:
                 gr.Markdown("<B>Please fill the following input fields to adapt automatically the Prompt:</B>")
@@ -8710,8 +8757,8 @@ def generate_video_tab(update_form = False, state_dict = None, ui_defaults = Non
                     )
 
 
-            show_advanced = gr.Checkbox(label="Advanced Mode", value=advanced_ui)
-            with gr.Tabs(visible=advanced_ui) as advanced_row:
+            show_advanced = gr.Checkbox(label="Advanced Mode", value=False)
+            with gr.Tabs(visible=False) as advanced_row:
                 guidance_max_phases = model_def.get("guidance_max_phases", 0)
                 no_negative_prompt = model_def.get("no_negative_prompt", False)
                 with gr.Tab("General"):
@@ -9242,7 +9289,7 @@ def generate_video_tab(update_form = False, state_dict = None, ui_defaults = Non
             last_choice = gr.Number(value =-1, interactive= False, visible= False)
             image_prompt_type_radio.change(fn=refresh_image_prompt_type_radio, inputs=[state, image_prompt_type, image_prompt_type_radio], outputs=[image_prompt_type, image_start_row, image_end_row, video_source, keep_frames_video_source, image_prompt_type_endcheckbox], show_progress="hidden" ) 
             image_prompt_type_endcheckbox.change(fn=refresh_image_prompt_type_endcheckbox, inputs=[state, image_prompt_type, image_prompt_type_radio, image_prompt_type_endcheckbox], outputs=[image_prompt_type, image_end_row] ) 
-            video_prompt_type_image_refs.input(fn=refresh_video_prompt_type_image_refs, inputs = [state, video_prompt_type, video_prompt_type_image_refs,image_mode], outputs = [video_prompt_type, image_refs_row, remove_background_images_ref,  image_refs_relative_size, frames_positions,video_guide_outpainting_col], show_progress="hidden")
+            video_prompt_type_image_refs.input(fn=refresh_video_prompt_type_image_refs, inputs = [state, video_prompt_type, video_prompt_type_image_refs,image_mode], outputs = [video_prompt_type, image_refs_row, remove_background_accordion,  image_refs_relative_size, frames_positions,video_guide_outpainting_col], show_progress="hidden")
             video_prompt_type_video_guide.input(fn=refresh_video_prompt_type_video_guide,     inputs = [state, gr.State(""),   video_prompt_type, video_prompt_type_video_guide,     image_mode, image_mask_guide, image_guide, image_mask], outputs = [video_prompt_type, video_guide, image_guide, keep_frames_video_guide, denoising_strength, video_guide_outpainting_col, video_prompt_type_video_mask, video_mask, image_mask, image_mask_guide, mask_expand, image_refs_row, video_prompt_type_video_custom_dropbox, video_prompt_type_video_custom_checkbox], show_progress="hidden") 
             video_prompt_type_video_guide_alt.input(fn=refresh_video_prompt_type_video_guide, inputs = [state, gr.State("alt"),video_prompt_type, video_prompt_type_video_guide_alt, image_mode, image_mask_guide, image_guide, image_mask], outputs = [video_prompt_type, video_guide, image_guide, keep_frames_video_guide, denoising_strength, video_guide_outpainting_col, video_prompt_type_video_mask, video_mask, image_mask, image_mask_guide, mask_expand, image_refs_row, video_prompt_type_video_custom_dropbox, video_prompt_type_video_custom_checkbox], show_progress="hidden") 
             # video_prompt_type_video_guide_alt.input(fn=refresh_video_prompt_type_video_guide_alt, inputs = [state, video_prompt_type, video_prompt_type_video_guide_alt, image_mode, image_mask_guide, image_guide, image_mask], outputs = [video_prompt_type, video_guide, image_guide, image_refs_row, denoising_strength, video_mask, mask_expand, image_mask_guide, image_guide, image_mask, keep_frames_video_guide ], show_progress="hidden")
@@ -9257,6 +9304,11 @@ def generate_video_tab(update_form = False, state_dict = None, ui_defaults = Non
 
 
             preview_trigger.change(refresh_preview, inputs= [state], outputs= [preview], show_progress="hidden")
+            save_prompt_btn.click(fn=save_prompt_handler, inputs=[save_prompt_name, prompt], outputs=[saved_prompts_dropdown])
+            load_prompt_btn.click(fn=load_prompt_handler, inputs=[saved_prompts_dropdown], outputs=[prompt])
+            delete_prompt_btn.click(fn=delete_prompt_handler, inputs=[saved_prompts_dropdown], outputs=[saved_prompts_dropdown])
+            clear_prompt_btn.click(fn=lambda: "", outputs=[prompt])
+            show_advanced.change(fn=lambda x: gr.update(visible=x), inputs=show_advanced, outputs=advanced_row)
             PP_MMAudio_setting.change(fn = lambda value : [gr.update(visible = value == 1), gr.update(visible = value == 0)] , inputs = [PP_MMAudio_setting], outputs = [PP_MMAudio_row, PP_custom_audio_row] )
 
             def refresh_status_async(state, progress=gr.Progress()):
